@@ -12,6 +12,7 @@ from utils.redis_handler import (
 )
 from utils.redis_helper import RedisHelper
 import logging
+from urllib.parse import urlparse, parse_qs
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,7 +20,24 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+
+# Parse the database URL and add sslmode=require
+db_url = os.environ.get("DATABASE_URL")
+if db_url:
+    try:
+        url = urlparse(db_url)
+        query_dict = parse_qs(url.query) if url.query else {}
+        query_dict['sslmode'] = ['require']  # Changed from 'disable' to 'require'
+        new_query = '&'.join(f"{k}={v[0]}" for k, v in query_dict.items())
+        app.config["SQLALCHEMY_DATABASE_URI"] = f"{url.scheme}://{url.netloc}{url.path}?{new_query}"
+        logger.info("Database URL configured with SSL enabled")
+    except Exception as e:
+        logger.error(f"Error parsing database URL: {str(e)}")
+        app.config["SQLALCHEMY_DATABASE_URI"] = db_url + "?sslmode=require"  # Changed from 'disable' to 'require'
+else:
+    logger.error("DATABASE_URL environment variable not set")
+    raise RuntimeError("DATABASE_URL environment variable is required")
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Initialize Flask-Login
@@ -69,7 +87,7 @@ def logout():
 @login_required
 def dashboard():
     messages = Message.query.order_by(Message.timestamp.desc()).limit(50).all()
-    queue_stats = {'queued': 0, 'started': 0, 'finished': 0, 'failed': 0}
+    queue_stats = {'queued': 0, 'started': 0, 'finished': 0, 'failed': 0, 'deferred': 0, 'scheduled': 0}
     processing_stats = {
         'avg_processing_time': 0,
         'total_processed': 0,
@@ -121,7 +139,7 @@ def queue_stats():
 @login_required
 def queue_history():
     if not redis_conn or not redis_helper.health_check():
-        return jsonify({"error": "Queue system unavailable"}), 503
+        return jsonify([]), 200  # Return empty array instead of error for better UX
         
     try:
         period = request.args.get('period', '24')
@@ -129,7 +147,7 @@ def queue_history():
         return jsonify(history)
     except Exception as e:
         logger.error(f"Error fetching queue history: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify([]), 200  # Return empty array on error for better UX
 
 @app.route('/templates/add', methods=['POST'])
 @login_required
