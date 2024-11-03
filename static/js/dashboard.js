@@ -33,13 +33,11 @@ async function fetchWithRetry(url, attempts = CONFIG.retryAttempts) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const data = await response.json();
-            if (!data) {
-                throw new Error('Empty response received');
-            }
-            return data;
+            // Handle both null and undefined responses
+            return data ?? [];
         } catch (error) {
             if (i === attempts - 1) {
-                console.warn(`Failed to fetch ${url} after ${attempts} attempts:`, error);
+                console.warn(`Failed to fetch ${url} after ${attempts} attempts:`, error.message);
                 throw error;
             }
             await new Promise(resolve => setTimeout(resolve, CONFIG.retryDelay));
@@ -72,7 +70,6 @@ function createEmptyStateChart(ctx, message) {
 function cleanupChart(chart) {
     if (chart) {
         chart.destroy();
-        return null;
     }
     return null;
 }
@@ -82,7 +79,7 @@ async function updateQueueStats() {
         const data = await fetchWithRetry('/api/queue-stats');
         
         // Update queue stats
-        const queue = data.queue;
+        const queue = data?.queue || {};
         for (const [key, value] of Object.entries(queue)) {
             const element = document.getElementById(`${key}-count`);
             if (element) {
@@ -91,7 +88,7 @@ async function updateQueueStats() {
         }
 
         // Update processing stats
-        const processing = data.processing;
+        const processing = data?.processing;
         if (processing) {
             const elements = {
                 'avg-processing-time': processing.avg_processing_time.toFixed(2) + 's',
@@ -111,7 +108,7 @@ async function updateQueueStats() {
             }
         }
     } catch (error) {
-        console.warn('Queue stats temporarily unavailable');
+        console.warn('Queue stats temporarily unavailable:', error.message);
     }
 }
 
@@ -122,15 +119,17 @@ async function updateQueueHistory() {
     try {
         const data = await fetchWithRetry('/api/queue-history');
         
+        // Handle empty data without throwing error
         if (!Array.isArray(data) || data.length === 0) {
             queueHistoryChart = cleanupChart(queueHistoryChart);
             queueHistoryChart = createEmptyStateChart(
                 chartContainer.getContext('2d'),
-                'No queue history data available yet'
+                'No message history available yet'
             );
             return;
         }
 
+        // Format timestamps and ensure data points exist
         const timestamps = data.map(point => {
             const date = new Date(point.timestamp * 1000);
             return date.toLocaleTimeString();
@@ -187,11 +186,11 @@ async function updateQueueHistory() {
             }
         });
     } catch (error) {
-        console.warn('Queue history temporarily unavailable');
+        console.warn('Queue history temporarily unavailable:', error.message);
         queueHistoryChart = cleanupChart(queueHistoryChart);
         queueHistoryChart = createEmptyStateChart(
             chartContainer.getContext('2d'),
-            'Queue history data temporarily unavailable'
+            'Queue history temporarily unavailable'
         );
     }
 }
