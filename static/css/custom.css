@@ -1,0 +1,19 @@
+.message-log {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.status-card {
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.chart-container {
+    position: relative;
+    height: 300px;
+}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        {% include 'components/system_status.html' %}
+    </div>
+    <div class="col-md-8">
+        {% include 'components/queue_status.html' %}
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        {% include 'components/message_log.html' %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
