@@ -2,11 +2,16 @@ import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash
-from redis import Redis
 from rq import Queue
 from models import User, Message, db
 from utils.twilio_handler import process_twilio_webhook
 from utils.redis_handler import get_queue_stats
+from utils.redis_helper import RedisHelper
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your-secret-key")
@@ -18,9 +23,14 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# Initialize Redis and RQ
-redis_conn = Redis(host='0.0.0.0', port=6379)
-message_queue = Queue('messages', connection=redis_conn)
+# Initialize Redis and RQ with proper error handling
+redis_helper = RedisHelper()
+redis_conn = redis_helper.get_connection()
+if redis_conn:
+    message_queue = Queue('messages', connection=redis_conn)
+else:
+    message_queue = None
+    logger.error("Failed to initialize Redis queue - some features may be unavailable")
 
 db.init_app(app)
 
@@ -55,23 +65,44 @@ def logout():
 @login_required
 def dashboard():
     messages = Message.query.order_by(Message.timestamp.desc()).limit(50).all()
-    queue_stats = get_queue_stats(message_queue)
+    queue_stats = {'queued': 0, 'started': 0, 'finished': 0, 'failed': 0}
+    
+    if message_queue and redis_helper.health_check():
+        try:
+            queue_stats = get_queue_stats(message_queue)
+        except Exception as e:
+            logger.error(f"Error fetching queue stats: {str(e)}")
+            flash("Unable to fetch queue statistics", "error")
+    else:
+        flash("Queue system is currently unavailable", "warning")
+    
     return render_template('dashboard.html', messages=messages, stats=queue_stats)
 
 @app.route('/webhook/twilio', methods=['POST'])
 def twilio_webhook():
+    if not message_queue or not redis_helper.health_check():
+        logger.error("Queue system unavailable - cannot process webhook")
+        return jsonify({"error": "Queue system unavailable"}), 503
+        
     try:
-        # Process incoming Twilio message
         job = message_queue.enqueue(process_twilio_webhook, request.form)
         return jsonify({"status": "queued", "job_id": job.id}), 200
     except Exception as e:
+        logger.error(f"Error processing webhook: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/queue-stats')
 @login_required
 def queue_stats():
-    stats = get_queue_stats(message_queue)
-    return jsonify(stats)
+    if not message_queue or not redis_helper.health_check():
+        return jsonify({"error": "Queue system unavailable"}), 503
+        
+    try:
+        stats = get_queue_stats(message_queue)
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error fetching queue stats: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 with app.app_context():
     db.create_all()

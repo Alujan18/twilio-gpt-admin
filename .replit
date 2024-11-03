@@ -23,6 +23,10 @@ args = "redis_worker"
 task = "workflow.run"
 args = "init_db"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "redis_server"
+
 [[workflows.workflow]]
 name = "flask_app"
 author = "agent"
@@ -66,9 +70,27 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "python init_db.py"
 
+[[workflows.workflow]]
+name = "redis_server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "redis-server --port 6379 --bind 0.0.0.0 --protected-mode no"
+
 [deployment]
 run = ["sh", "-c", "python main.py"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 6379
+externalPort = 3000

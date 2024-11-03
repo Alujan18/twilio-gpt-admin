@@ -7,7 +7,7 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY)
 def generate_response(message: str) -> str:
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[{"role": "user", "content": message}]
         )
         return response.choices[0].message.content
