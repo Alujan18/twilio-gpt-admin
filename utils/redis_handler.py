@@ -9,18 +9,33 @@ logger = logging.getLogger(__name__)
 
 def get_queue_stats(queue):
     """Get detailed queue statistics"""
-    return {
-        'queued': len(queue),
-        'failed': len(queue.failed_job_registry),
-        'finished': len(queue.finished_job_registry),
-        'started': len(queue.started_job_registry),
-        'deferred': len(queue.deferred_job_registry),
-        'scheduled': len(queue.scheduled_job_registry)
-    }
+    try:
+        return {
+            'queued': len(queue),
+            'failed': len(queue.failed_job_registry),
+            'finished': len(queue.finished_job_registry),
+            'started': len(queue.started_job_registry),
+            'deferred': len(queue.deferred_job_registry),
+            'scheduled': len(queue.scheduled_job_registry)
+        }
+    except Exception as e:
+        logger.error(f"Error getting queue stats: {str(e)}")
+        return {
+            'queued': 0,
+            'failed': 0,
+            'finished': 0,
+            'started': 0,
+            'deferred': 0,
+            'scheduled': 0
+        }
 
 def get_queue_history(redis_conn, period_hours=24) -> List[Dict]:
     """Get queue history for the specified period"""
     try:
+        if not redis_conn:
+            logger.warning("Redis connection not available")
+            return []
+
         now = datetime.utcnow()
         start_time = now - timedelta(hours=period_hours)
         history_key = "queue:history"
@@ -33,7 +48,7 @@ def get_queue_history(redis_conn, period_hours=24) -> List[Dict]:
         )
         
         if not raw_history:
-            logger.info("No queue history data found")
+            logger.info("No queue history data found for the specified period")
             return []
             
         history_data = []
@@ -41,19 +56,35 @@ def get_queue_history(redis_conn, period_hours=24) -> List[Dict]:
             try:
                 if isinstance(point, bytes):
                     point = point.decode('utf-8')
-                history_data.append(json.loads(point))
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                logger.error(f"Error decoding history point: {e}")
+                data = json.loads(point)
+                # Ensure all required fields exist
+                required_fields = ['timestamp', 'queued', 'started', 'failed']
+                if all(field in data for field in required_fields):
+                    history_data.append(data)
+                else:
+                    logger.warning(f"Skipping malformed history point: missing required fields")
+            except json.JSONDecodeError as e:
+                logger.error(f"Error decoding history point: {str(e)}")
+                continue
+            except UnicodeDecodeError as e:
+                logger.error(f"Error decoding bytes to string: {str(e)}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error processing history point: {str(e)}")
                 continue
                 
         return history_data
     except Exception as e:
-        logger.error(f"Error fetching queue history: {e}")
+        logger.error(f"Error fetching queue history: {str(e)}")
         return []
 
 def record_queue_stats(redis_conn, queue):
     """Record current queue statistics for historical tracking"""
     try:
+        if not redis_conn:
+            logger.warning("Redis connection not available - skipping stats recording")
+            return
+
         stats = get_queue_stats(queue)
         stats['timestamp'] = datetime.utcnow().timestamp()
         
@@ -70,35 +101,47 @@ def record_queue_stats(redis_conn, queue):
             0,
             week_ago.timestamp()
         )
+        logger.info("Queue stats recorded successfully")
     except Exception as e:
-        logger.error(f"Error recording queue stats: {e}")
+        logger.error(f"Error recording queue stats: {str(e)}")
 
 def get_processing_stats(redis_conn) -> Dict:
     """Get message processing statistics"""
     try:
+        if not redis_conn:
+            logger.warning("Redis connection not available")
+            return get_default_processing_stats()
+
         stats_key = "processing:stats"
         raw_stats = redis_conn.get(stats_key)
         
         if raw_stats:
-            return json.loads(raw_stats)
-        return {
-            'avg_processing_time': 0,
-            'total_processed': 0,
-            'success_rate': 100,
-            'hourly_volume': []
-        }
+            try:
+                return json.loads(raw_stats)
+            except json.JSONDecodeError as e:
+                logger.error(f"Error decoding processing stats: {str(e)}")
+                return get_default_processing_stats()
+        return get_default_processing_stats()
     except Exception as e:
-        logger.error(f"Error getting processing stats: {e}")
-        return {
-            'avg_processing_time': 0,
-            'total_processed': 0,
-            'success_rate': 100,
-            'hourly_volume': []
-        }
+        logger.error(f"Error getting processing stats: {str(e)}")
+        return get_default_processing_stats()
+
+def get_default_processing_stats() -> Dict:
+    """Return default processing stats structure"""
+    return {
+        'avg_processing_time': 0,
+        'total_processed': 0,
+        'success_rate': 100,
+        'hourly_volume': []
+    }
 
 def update_processing_stats(redis_conn, processing_time: float, success: bool):
     """Update message processing statistics"""
     try:
+        if not redis_conn:
+            logger.warning("Redis connection not available - skipping stats update")
+            return
+
         stats_key = "processing:stats"
         stats = get_processing_stats(redis_conn)
         
@@ -116,21 +159,33 @@ def update_processing_stats(redis_conn, processing_time: float, success: bool):
         # Update hourly volume
         current_hour = datetime.utcnow().strftime('%Y-%m-%d-%H')
         volume_key = f"processing:volume:{current_hour}"
-        redis_conn.incr(volume_key)
-        redis_conn.expire(volume_key, 86400)  # Expire after 24 hours
+        
+        try:
+            redis_conn.incr(volume_key)
+            redis_conn.expire(volume_key, 86400)  # Expire after 24 hours
+        except Exception as e:
+            logger.error(f"Error updating volume stats: {str(e)}")
         
         # Get last 24 hours volume
         hourly_volume = []
         for i in range(24):
             hour_key = (datetime.utcnow() - timedelta(hours=i)).strftime('%Y-%m-%d-%H')
-            count = redis_conn.get(f"processing:volume:{hour_key}")
-            hourly_volume.append({
-                'hour': hour_key,
-                'count': int(count) if count else 0
-            })
+            try:
+                count = redis_conn.get(f"processing:volume:{hour_key}")
+                hourly_volume.append({
+                    'hour': hour_key,
+                    'count': int(count) if count else 0
+                })
+            except Exception as e:
+                logger.error(f"Error fetching volume for hour {hour_key}: {str(e)}")
+                hourly_volume.append({'hour': hour_key, 'count': 0})
+        
         stats['hourly_volume'] = hourly_volume
         
         # Save updated stats
-        redis_conn.set(stats_key, json.dumps(stats))
+        try:
+            redis_conn.set(stats_key, json.dumps(stats))
+        except Exception as e:
+            logger.error(f"Error saving processing stats: {str(e)}")
     except Exception as e:
-        logger.error(f"Error updating processing stats: {e}")
+        logger.error(f"Error updating processing stats: {str(e)}")
