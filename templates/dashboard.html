@@ -3,20 +3,67 @@
 {% block content %}
 <div class="row">
     <div class="col-md-4">
-        {% include 'components/system_status.html' %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Queue Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <div class="list-group-item">
+                        Queued Messages: <span id="queued-count">{{ stats.queued }}</span>
+                    </div>
+                    <div class="list-group-item">
+                        Processing: <span id="started-count">{{ stats.started }}</span>
+                    </div>
+                    <div class="list-group-item">
+                        Completed: <span id="finished-count">{{ stats.finished }}</span>
+                    </div>
+                    <div class="list-group-item">
+                        Failed: <span id="failed-count">{{ stats.failed }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+    
     <div class="col-md-8">
-        {% include 'components/queue_status.html' %}
-    </div>
-</div>
-
-<div class="row mt-4">
-    <div class="col-12">
-        {% include 'components/message_log.html' %}
+        <div class="card">
+            <div class="card-header">
+                <h5>Recent Messages</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>From</th>
+                                <th>Message</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for message in messages %}
+                            <tr>
+                                <td>{{ message.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>{{ message.from_number }}</td>
+                                <td>{{ message.content }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if message.status == 'completed' else 'warning' if message.status == 'processing' else 'danger' }}">
+                                        {{ message.status }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="/static/js/dashboard.js"></script>
 {% endblock %}

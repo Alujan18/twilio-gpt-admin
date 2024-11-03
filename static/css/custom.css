@@ -1,19 +1,17 @@
-.message-log {
-    max-height: 600px;
-    overflow-y: auto;
+.badge {
+    font-size: 0.8em;
 }
 
-.status-card {
-    border-radius: 8px;
+.table {
+    font-size: 0.9em;
+}
+
+.card {
     margin-bottom: 1rem;
 }
 
-.metric-value {
-    font-size: 2rem;
-    font-weight: bold;
-}
-
-.chart-container {
-    position: relative;
-    height: 300px;
+.list-group-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }

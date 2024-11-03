@@ -1,29 +1,13 @@
-// Auto-refresh dashboard data every 30 seconds
-setInterval(() => {
-    location.reload();
-}, 30000);
+function updateQueueStats() {
+    fetch('/api/queue-stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('queued-count').textContent = data.queued;
+            document.getElementById('started-count').textContent = data.started;
+            document.getElementById('finished-count').textContent = data.finished;
+            document.getElementById('failed-count').textContent = data.failed;
+        });
+}
 
-// Initialize charts
-document.addEventListener('DOMContentLoaded', function() {
-    const queueCtx = document.getElementById('queueChart').getContext('2d');
-    new Chart(queueCtx, {
-        type: 'line',
-        data: {
-            labels: Array.from({length: 10}, (_, i) => i),
-            datasets: [{
-                label: 'Queue Length',
-                data: queueData,
-                borderColor: 'rgb(75, 192, 192)',
-                tension: 0.1
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
-});
+// Update stats every 5 seconds
+setInterval(updateQueueStats, 5000);
