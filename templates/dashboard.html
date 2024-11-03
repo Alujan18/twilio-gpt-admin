@@ -21,12 +21,60 @@
                     <div class="list-group-item">
                         Failed: <span id="failed-count">{{ stats.failed }}</span>
                     </div>
+                    <div class="list-group-item">
+                        Deferred: <span id="deferred-count">{{ stats.deferred }}</span>
+                    </div>
+                    <div class="list-group-item">
+                        Scheduled: <span id="scheduled-count">{{ stats.scheduled }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Processing Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <div class="list-group-item">
+                        Average Processing Time: 
+                        <span id="avg-processing-time">
+                            {{ "%.2f"|format(processing_stats.avg_processing_time) }}s
+                        </span>
+                    </div>
+                    <div class="list-group-item">
+                        Total Processed: 
+                        <span id="total-processed">{{ processing_stats.total_processed }}</span>
+                    </div>
+                    <div class="list-group-item">
+                        Success Rate: 
+                        <span id="success-rate">{{ "%.1f"|format(processing_stats.success_rate) }}%</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     
     <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Queue History</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="queueHistoryChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Message Volume (24h)</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="volumeChart"></canvas>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-header">
                 <h5>Recent Messages</h5>
@@ -65,5 +113,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="/static/js/dashboard.js"></script>
 {% endblock %}

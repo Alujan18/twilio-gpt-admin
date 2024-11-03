@@ -1,11 +1,15 @@
 import os
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash
 from rq import Queue
 from models import User, Message, MessageTemplate, db
 from utils.twilio_handler import process_twilio_webhook
-from utils.redis_handler import get_queue_stats
+from utils.redis_handler import (
+    get_queue_stats, get_queue_history, record_queue_stats,
+    get_processing_stats, update_processing_stats
+)
 from utils.redis_helper import RedisHelper
 import logging
 
@@ -66,23 +70,66 @@ def logout():
 def dashboard():
     messages = Message.query.order_by(Message.timestamp.desc()).limit(50).all()
     queue_stats = {'queued': 0, 'started': 0, 'finished': 0, 'failed': 0}
+    processing_stats = {
+        'avg_processing_time': 0,
+        'total_processed': 0,
+        'success_rate': 100,
+        'hourly_volume': []
+    }
     
     if message_queue and redis_helper.health_check():
         try:
             queue_stats = get_queue_stats(message_queue)
+            processing_stats = get_processing_stats(redis_conn)
+            # Record current stats for historical tracking
+            record_queue_stats(redis_conn, message_queue)
         except Exception as e:
             logger.error(f"Error fetching queue stats: {str(e)}")
             flash("Unable to fetch queue statistics", "error")
     else:
         flash("Queue system is currently unavailable", "warning")
     
-    return render_template('dashboard.html', messages=messages, stats=queue_stats)
+    return render_template('dashboard.html', 
+                         messages=messages, 
+                         stats=queue_stats,
+                         processing_stats=processing_stats)
 
 @app.route('/templates')
 @login_required
 def templates():
     templates = MessageTemplate.query.order_by(MessageTemplate.created_at.desc()).all()
     return render_template('templates.html', templates=templates)
+
+@app.route('/api/queue-stats')
+@login_required
+def queue_stats():
+    if not message_queue or not redis_helper.health_check():
+        return jsonify({"error": "Queue system unavailable"}), 503
+        
+    try:
+        stats = get_queue_stats(message_queue)
+        processing_stats = get_processing_stats(redis_conn)
+        return jsonify({
+            "queue": stats,
+            "processing": processing_stats
+        })
+    except Exception as e:
+        logger.error(f"Error fetching queue stats: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/queue-history')
+@login_required
+def queue_history():
+    if not redis_conn or not redis_helper.health_check():
+        return jsonify({"error": "Queue system unavailable"}), 503
+        
+    try:
+        period = request.args.get('period', '24')
+        history = get_queue_history(redis_conn, int(period))
+        return jsonify(history)
+    except Exception as e:
+        logger.error(f"Error fetching queue history: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/templates/add', methods=['POST'])
 @login_required
@@ -135,23 +182,15 @@ def twilio_webhook():
         return jsonify({"error": "Queue system unavailable"}), 503
         
     try:
+        start_time = datetime.utcnow()
         job = message_queue.enqueue(process_twilio_webhook, request.form)
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+        update_processing_stats(redis_conn, processing_time, True)
         return jsonify({"status": "queued", "job_id": job.id}), 200
     except Exception as e:
         logger.error(f"Error processing webhook: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/queue-stats')
-@login_required
-def queue_stats():
-    if not message_queue or not redis_helper.health_check():
-        return jsonify({"error": "Queue system unavailable"}), 503
-        
-    try:
-        stats = get_queue_stats(message_queue)
-        return jsonify(stats)
-    except Exception as e:
-        logger.error(f"Error fetching queue stats: {str(e)}")
+        if redis_conn:
+            update_processing_stats(redis_conn, 0, False)
         return jsonify({"error": str(e)}), 500
 
 with app.app_context():
