@@ -4,8 +4,8 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 from flask_login import LoginManager, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash
 from rq import Queue
-from models import User, Message, MessageTemplate, db
-from utils.twilio_handler import process_twilio_webhook
+from models import User, Message, MessageTemplate, TwilioNumber, db
+from utils.twilio_handler import process_twilio_webhook, reset_daily_counts
 from utils.redis_handler import (
     get_queue_stats, get_queue_history, record_queue_stats,
     get_processing_stats, update_processing_stats
@@ -56,14 +56,6 @@ else:
     logger.error("Failed to initialize Redis queue - some features may be unavailable")
 
 db.init_app(app)
-
-def get_default_processing_stats():
-    return {
-        'avg_processing_time': 0,
-        'total_processed': 0,
-        'success_rate': 100,
-        'hourly_volume': []
-    }
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -126,6 +118,65 @@ def dashboard():
 def templates():
     templates = MessageTemplate.query.order_by(MessageTemplate.created_at.desc()).all()
     return render_template('templates.html', templates=templates)
+
+@app.route('/twilio-numbers')
+@login_required
+def twilio_numbers():
+    numbers = TwilioNumber.query.order_by(TwilioNumber.priority.desc()).all()
+    return render_template('twilio_numbers.html', numbers=numbers)
+
+@app.route('/twilio-numbers/add', methods=['POST'])
+@login_required
+def add_number():
+    try:
+        number = TwilioNumber(
+            phone_number=request.form['phone_number'],
+            friendly_name=request.form['friendly_name'],
+            priority=int(request.form['priority']),
+            is_active=True
+        )
+        db.session.add(number)
+        db.session.commit()
+        flash('Twilio number added successfully')
+    except Exception as e:
+        flash(f'Error adding Twilio number: {str(e)}')
+    return redirect(url_for('twilio_numbers'))
+
+@app.route('/twilio-numbers/edit/<int:number_id>', methods=['POST'])
+@login_required
+def edit_number(number_id):
+    number = TwilioNumber.query.get_or_404(number_id)
+    try:
+        number.phone_number = request.form['phone_number']
+        number.friendly_name = request.form['friendly_name']
+        number.priority = int(request.form['priority'])
+        db.session.commit()
+        flash('Twilio number updated successfully')
+    except Exception as e:
+        flash(f'Error updating Twilio number: {str(e)}')
+    return redirect(url_for('twilio_numbers'))
+
+@app.route('/twilio-numbers/toggle/<int:number_id>', methods=['POST'])
+@login_required
+def toggle_number(number_id):
+    number = TwilioNumber.query.get_or_404(number_id)
+    try:
+        number.is_active = not number.is_active
+        db.session.commit()
+        flash(f'Twilio number {"activated" if number.is_active else "deactivated"} successfully')
+    except Exception as e:
+        flash(f'Error toggling Twilio number: {str(e)}')
+    return redirect(url_for('twilio_numbers'))
+
+@app.route('/twilio-numbers/reset-counts', methods=['POST'])
+@login_required
+def reset_number_counts():
+    try:
+        reset_daily_counts()
+        flash('Daily message counts reset successfully')
+    except Exception as e:
+        flash(f'Error resetting daily counts: {str(e)}')
+    return redirect(url_for('twilio_numbers'))
 
 @app.route('/api/queue-stats')
 @login_required

@@ -1,5 +1,6 @@
 from app import app, db
-from models import User, MessageTemplate
+from models import User, MessageTemplate, TwilioNumber
+import os
 
 def create_admin():
     with app.app_context():
@@ -17,6 +18,15 @@ def create_admin():
         else:
             print("Admin user already exists")
 
+        # Add default Twilio number
+        default_number = TwilioNumber(
+            phone_number=os.environ.get('TWILIO_PHONE_NUMBER'),
+            friendly_name='Default Number',
+            priority=1,
+            is_active=True
+        )
+        db.session.add(default_number)
+        
         # Create sample message templates
         sample_templates = [
             {
@@ -45,7 +55,7 @@ def create_admin():
             db.session.add(template)
         
         db.session.commit()
-        print("Sample templates created successfully")
+        print("Sample templates and Twilio numbers created successfully")
 
 if __name__ == "__main__":
     create_admin()

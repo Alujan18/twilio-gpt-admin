@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Twilio Numbers</h2>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addNumberModal">
+                Add New Number
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Phone Number</th>
+                            <th>Name</th>
+                            <th>Priority</th>
+                            <th>Daily Messages</th>
+                            <th>Last Used</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for number in numbers %}
+                        <tr>
+                            <td>{{ number.phone_number }}</td>
+                            <td>{{ number.friendly_name }}</td>
+                            <td>{{ number.priority }}</td>
+                            <td>{{ number.daily_message_count }}</td>
+                            <td>{{ number.last_used.strftime('%Y-%m-%d %H:%M:%S') if number.last_used else 'Never' }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if number.is_active else 'danger' }}">
+                                    {{ 'Active' if number.is_active else 'Inactive' }}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-info" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#editNumberModal{{ number.id }}">
+                                    Edit
+                                </button>
+                                <form method="POST" action="{{ url_for('toggle_number', number_id=number.id) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-{{ 'warning' if number.is_active else 'success' }}">
+                                        {{ 'Deactivate' if number.is_active else 'Activate' }}
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+
+                        <!-- Edit Number Modal -->
+                        <div class="modal fade" id="editNumberModal{{ number.id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Edit Twilio Number</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('edit_number', number_id=number.id) }}">
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label for="phone_number{{ number.id }}" class="form-label">Phone Number</label>
+                                                <input type="text" class="form-control" id="phone_number{{ number.id }}" 
+                                                       name="phone_number" value="{{ number.phone_number }}" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="friendly_name{{ number.id }}" class="form-label">Friendly Name</label>
+                                                <input type="text" class="form-control" id="friendly_name{{ number.id }}" 
+                                                       name="friendly_name" value="{{ number.friendly_name }}">
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="priority{{ number.id }}" class="form-label">Priority (higher = more priority)</label>
+                                                <input type="number" class="form-control" id="priority{{ number.id }}" 
+                                                       name="priority" value="{{ number.priority }}" min="0">
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Number Modal -->
+<div class="modal fade" id="addNumberModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Twilio Number</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_number') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="phone_number" class="form-label">Phone Number</label>
+                        <input type="text" class="form-control" id="phone_number" name="phone_number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="friendly_name" class="form-label">Friendly Name</label>
+                        <input type="text" class="form-control" id="friendly_name" name="friendly_name">
+                    </div>
+                    <div class="mb-3">
+                        <label for="priority" class="form-label">Priority (higher = more priority)</label>
+                        <input type="number" class="form-control" id="priority" name="priority" value="0" min="0">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Add Number</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
