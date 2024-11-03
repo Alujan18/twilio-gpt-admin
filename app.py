@@ -13,6 +13,7 @@ from utils.redis_handler import (
 from utils.redis_helper import RedisHelper
 import logging
 from urllib.parse import urlparse, parse_qs
+from redis.exceptions import RedisError
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,13 +28,13 @@ if db_url:
     try:
         url = urlparse(db_url)
         query_dict = parse_qs(url.query) if url.query else {}
-        query_dict['sslmode'] = ['require']  # Changed from 'disable' to 'require'
+        query_dict['sslmode'] = ['require']
         new_query = '&'.join(f"{k}={v[0]}" for k, v in query_dict.items())
         app.config["SQLALCHEMY_DATABASE_URI"] = f"{url.scheme}://{url.netloc}{url.path}?{new_query}"
         logger.info("Database URL configured with SSL enabled")
     except Exception as e:
         logger.error(f"Error parsing database URL: {str(e)}")
-        app.config["SQLALCHEMY_DATABASE_URI"] = db_url + "?sslmode=require"  # Changed from 'disable' to 'require'
+        app.config["SQLALCHEMY_DATABASE_URI"] = db_url + "?sslmode=require"
 else:
     logger.error("DATABASE_URL environment variable not set")
     raise RuntimeError("DATABASE_URL environment variable is required")
@@ -55,6 +56,14 @@ else:
     logger.error("Failed to initialize Redis queue - some features may be unavailable")
 
 db.init_app(app)
+
+def get_default_processing_stats():
+    return {
+        'avg_processing_time': 0,
+        'total_processed': 0,
+        'success_rate': 100,
+        'hourly_volume': []
+    }
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -122,7 +131,13 @@ def templates():
 @login_required
 def queue_stats():
     if not message_queue or not redis_helper.health_check():
-        return jsonify({"error": "Queue system unavailable"}), 503
+        return jsonify({
+            "queue": {
+                'queued': 0, 'started': 0, 'finished': 0, 
+                'failed': 0, 'deferred': 0, 'scheduled': 0
+            },
+            "processing": get_default_processing_stats()
+        })
         
     try:
         stats = get_queue_stats(message_queue)
@@ -133,21 +148,37 @@ def queue_stats():
         })
     except Exception as e:
         logger.error(f"Error fetching queue stats: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "queue": {
+                'queued': 0, 'started': 0, 'finished': 0, 
+                'failed': 0, 'deferred': 0, 'scheduled': 0
+            },
+            "processing": get_default_processing_stats()
+        })
 
 @app.route('/api/queue-history')
 @login_required
 def queue_history():
-    if not redis_conn or not redis_helper.health_check():
-        return jsonify([]), 200  # Return empty array instead of error for better UX
-        
     try:
+        if not redis_conn or not redis_helper.health_check():
+            logger.warning("Redis connection unavailable - returning empty history")
+            return jsonify([])
+            
         period = request.args.get('period', '24')
-        history = get_queue_history(redis_conn, int(period))
+        try:
+            period = int(period)
+        except ValueError:
+            logger.warning(f"Invalid period value: {period}, using default 24")
+            period = 24
+            
+        history = get_queue_history(redis_conn, period)
         return jsonify(history)
+    except RedisError as e:
+        logger.error(f"Redis error in queue history: {str(e)}")
+        return jsonify([])
     except Exception as e:
-        logger.error(f"Error fetching queue history: {str(e)}")
-        return jsonify([]), 200  # Return empty array on error for better UX
+        logger.error(f"Unexpected error in queue history: {str(e)}")
+        return jsonify([])
 
 @app.route('/templates/add', methods=['POST'])
 @login_required
