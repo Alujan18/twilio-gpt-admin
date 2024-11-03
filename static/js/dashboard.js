@@ -6,7 +6,23 @@ const CONFIG = {
     retryAttempts: 3,
     retryDelay: 2000,
     updateInterval: 5000,
-    historyInterval: 60000
+    historyInterval: 60000,
+    fadeInDuration: 300
+};
+
+const CHART_DEFAULTS = {
+    emptyState: {
+        animation: {
+            duration: CONFIG.fadeInDuration,
+            easing: 'easeOutQuart'
+        },
+        font: {
+            size: 16,
+            family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial'
+        },
+        color: 'rgb(150, 150, 150)',
+        padding: { top: 30 }
+    }
 };
 
 async function fetchWithRetry(url, attempts = CONFIG.retryAttempts) {
@@ -16,13 +32,49 @@ async function fetchWithRetry(url, attempts = CONFIG.retryAttempts) {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            return await response.json();
+            const data = await response.json();
+            if (!data) {
+                throw new Error('Empty response received');
+            }
+            return data;
         } catch (error) {
-            if (i === attempts - 1) throw error;
-            console.warn(`Attempt ${i + 1} failed, retrying after ${CONFIG.retryDelay}ms...`);
+            if (i === attempts - 1) {
+                console.warn(`Failed to fetch ${url} after ${attempts} attempts:`, error);
+                throw error;
+            }
             await new Promise(resolve => setTimeout(resolve, CONFIG.retryDelay));
         }
     }
+}
+
+function createEmptyStateChart(ctx, message) {
+    return new Chart(ctx, {
+        type: 'line',
+        data: { datasets: [] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: CHART_DEFAULTS.emptyState.animation,
+            plugins: {
+                legend: { display: false },
+                title: {
+                    display: true,
+                    text: message,
+                    font: CHART_DEFAULTS.emptyState.font,
+                    color: CHART_DEFAULTS.emptyState.color,
+                    padding: CHART_DEFAULTS.emptyState.padding
+                }
+            }
+        }
+    });
+}
+
+function cleanupChart(chart) {
+    if (chart) {
+        chart.destroy();
+        return null;
+    }
+    return null;
 }
 
 async function updateQueueStats() {
@@ -33,38 +85,49 @@ async function updateQueueStats() {
         const queue = data.queue;
         for (const [key, value] of Object.entries(queue)) {
             const element = document.getElementById(`${key}-count`);
-            if (element) element.textContent = value;
+            if (element) {
+                element.textContent = value;
+            }
         }
 
         // Update processing stats
         const processing = data.processing;
         if (processing) {
-            document.getElementById('avg-processing-time').textContent = 
-                processing.avg_processing_time.toFixed(2) + 's';
-            document.getElementById('total-processed').textContent = 
-                processing.total_processed;
-            document.getElementById('success-rate').textContent = 
-                processing.success_rate.toFixed(1) + '%';
+            const elements = {
+                'avg-processing-time': processing.avg_processing_time.toFixed(2) + 's',
+                'total-processed': processing.total_processed,
+                'success-rate': processing.success_rate.toFixed(1) + '%'
+            };
 
-            // Update volume chart if data available
+            for (const [id, value] of Object.entries(elements)) {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.textContent = value;
+                }
+            }
+
             if (processing.hourly_volume) {
                 updateVolumeChart(processing.hourly_volume);
             }
         }
     } catch (error) {
-        console.error('Error updating queue stats:', error);
+        console.warn('Queue stats temporarily unavailable');
     }
 }
 
 async function updateQueueHistory() {
+    const chartContainer = document.getElementById('queueHistoryChart');
+    if (!chartContainer) return;
+
     try {
         const data = await fetchWithRetry('/api/queue-history');
         
         if (!Array.isArray(data) || data.length === 0) {
-            if (queueHistoryChart) {
-                queueHistoryChart.destroy();
-                queueHistoryChart = null;
-            }
+            queueHistoryChart = cleanupChart(queueHistoryChart);
+            queueHistoryChart = createEmptyStateChart(
+                chartContainer.getContext('2d'),
+                'No queue history data available yet'
+            );
             return;
         }
 
@@ -94,12 +157,8 @@ async function updateQueueHistory() {
             }
         ];
 
-        if (queueHistoryChart) {
-            queueHistoryChart.destroy();
-        }
-
-        const ctx = document.getElementById('queueHistoryChart').getContext('2d');
-        queueHistoryChart = new Chart(ctx, {
+        queueHistoryChart = cleanupChart(queueHistoryChart);
+        queueHistoryChart = new Chart(chartContainer.getContext('2d'), {
             type: 'line',
             data: {
                 labels: timestamps,
@@ -108,6 +167,9 @@ async function updateQueueHistory() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: CONFIG.fadeInDuration
+                },
                 scales: {
                     y: {
                         beginAtZero: true,
@@ -125,17 +187,25 @@ async function updateQueueHistory() {
             }
         });
     } catch (error) {
-        console.error('Error updating queue history:', error);
-        // Keep the existing chart if there's an error
+        console.warn('Queue history temporarily unavailable');
+        queueHistoryChart = cleanupChart(queueHistoryChart);
+        queueHistoryChart = createEmptyStateChart(
+            chartContainer.getContext('2d'),
+            'Queue history data temporarily unavailable'
+        );
     }
 }
 
 function updateVolumeChart(volumeData) {
+    const chartContainer = document.getElementById('volumeChart');
+    if (!chartContainer) return;
+
     if (!Array.isArray(volumeData) || volumeData.length === 0) {
-        if (volumeChart) {
-            volumeChart.destroy();
-            volumeChart = null;
-        }
+        volumeChart = cleanupChart(volumeChart);
+        volumeChart = createEmptyStateChart(
+            chartContainer.getContext('2d'),
+            'No message volume data available yet'
+        );
         return;
     }
 
@@ -146,12 +216,8 @@ function updateVolumeChart(volumeData) {
 
     const data = volumeData.map(item => item.count || 0).reverse();
 
-    if (volumeChart) {
-        volumeChart.destroy();
-    }
-
-    const ctx = document.getElementById('volumeChart').getContext('2d');
-    volumeChart = new Chart(ctx, {
+    volumeChart = cleanupChart(volumeChart);
+    volumeChart = new Chart(chartContainer.getContext('2d'), {
         type: 'bar',
         data: {
             labels: labels,
@@ -166,6 +232,9 @@ function updateVolumeChart(volumeData) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: {
+                duration: CONFIG.fadeInDuration
+            },
             scales: {
                 y: {
                     beginAtZero: true,
@@ -185,17 +254,50 @@ function updateVolumeChart(volumeData) {
 }
 
 // Update stats at regular intervals
-const queueStatsInterval = setInterval(updateQueueStats, CONFIG.updateInterval);
-const queueHistoryInterval = setInterval(updateQueueHistory, CONFIG.historyInterval);
+let queueStatsInterval = null;
+let queueHistoryInterval = null;
+
+function startIntervals() {
+    if (!queueStatsInterval) {
+        queueStatsInterval = setInterval(updateQueueStats, CONFIG.updateInterval);
+    }
+    if (!queueHistoryInterval) {
+        queueHistoryInterval = setInterval(updateQueueHistory, CONFIG.historyInterval);
+    }
+}
+
+function stopIntervals() {
+    if (queueStatsInterval) {
+        clearInterval(queueStatsInterval);
+        queueStatsInterval = null;
+    }
+    if (queueHistoryInterval) {
+        clearInterval(queueHistoryInterval);
+        queueHistoryInterval = null;
+    }
+}
 
 // Initial load
 document.addEventListener('DOMContentLoaded', () => {
     updateQueueStats();
     updateQueueHistory();
+    startIntervals();
 });
 
 // Cleanup on page unload
 window.addEventListener('unload', () => {
-    clearInterval(queueStatsInterval);
-    clearInterval(queueHistoryInterval);
+    stopIntervals();
+    cleanupChart(queueHistoryChart);
+    cleanupChart(volumeChart);
+});
+
+// Handle visibility changes
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopIntervals();
+    } else {
+        updateQueueStats();
+        updateQueueHistory();
+        startIntervals();
+    }
 });
