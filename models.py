@@ -21,6 +21,18 @@ class TwilioNumber(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     daily_message_count = db.Column(db.Integer, default=0)
     last_used = db.Column(db.DateTime)
+    messages = db.relationship('Message', backref='twilio_number', lazy=True)
+
+class MessageTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    trigger_keywords = db.Column(db.Text, nullable=False)  # Comma-separated keywords
+    response_template = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    active = db.Column(db.Boolean, default=True)
+    usage_count = db.Column(db.Integer, default=0)
+    messages = db.relationship('Message', backref='template', lazy=True)
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -34,13 +46,3 @@ class Message(db.Model):
     processed_at = db.Column(db.DateTime)
     template_used = db.Column(db.Integer, db.ForeignKey('message_template.id'), nullable=True)
     twilio_number_id = db.Column(db.Integer, db.ForeignKey('twilio_number.id'))
-
-class MessageTemplate(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
-    trigger_keywords = db.Column(db.Text, nullable=False)  # Comma-separated keywords
-    response_template = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    active = db.Column(db.Boolean, default=True)
-    usage_count = db.Column(db.Integer, default=0)
