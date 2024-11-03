@@ -6,14 +6,25 @@ const CONFIG = {
     retryAttempts: 3,
     retryDelay: 2000,
     updateInterval: 5000,
-    historyInterval: 60000,
-    fadeInDuration: 300
+    historyInterval: 60000
 };
 
 const CHART_DEFAULTS = {
+    animation: {
+        duration: 750,
+        easing: 'easeInOutQuart',
+        delay: (context) => context.dataIndex * 50
+    },
+    transitions: {
+        active: {
+            animation: {
+                duration: 400
+            }
+        }
+    },
     emptyState: {
         animation: {
-            duration: CONFIG.fadeInDuration,
+            duration: 400,
             easing: 'easeOutQuart'
         },
         font: {
@@ -26,23 +37,26 @@ const CHART_DEFAULTS = {
 };
 
 async function fetchWithRetry(url, attempts = CONFIG.retryAttempts) {
+    let lastError = null;
+    
     for (let i = 0; i < attempts; i++) {
         try {
             const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             const data = await response.json();
-            // Handle both null and undefined responses
-            return data ?? [];
+            return data || [];
         } catch (error) {
+            lastError = error;
             if (i === attempts - 1) {
-                console.warn(`Failed to fetch ${url} after ${attempts} attempts:`, error.message);
-                throw error;
+                console.warn(`Failed to fetch ${url}:`, error.message);
+                return [];  // Return empty array instead of throwing
             }
             await new Promise(resolve => setTimeout(resolve, CONFIG.retryDelay));
         }
     }
+    return [];  // Fallback empty array
 }
 
 function createEmptyStateChart(ctx, message) {
@@ -119,7 +133,6 @@ async function updateQueueHistory() {
     try {
         const data = await fetchWithRetry('/api/queue-history');
         
-        // Handle empty data without throwing error
         if (!Array.isArray(data) || data.length === 0) {
             queueHistoryChart = cleanupChart(queueHistoryChart);
             queueHistoryChart = createEmptyStateChart(
@@ -129,7 +142,6 @@ async function updateQueueHistory() {
             return;
         }
 
-        // Format timestamps and ensure data points exist
         const timestamps = data.map(point => {
             const date = new Date(point.timestamp * 1000);
             return date.toLocaleTimeString();
@@ -166,9 +178,8 @@ async function updateQueueHistory() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: {
-                    duration: CONFIG.fadeInDuration
-                },
+                animation: CHART_DEFAULTS.animation,
+                transitions: CHART_DEFAULTS.transitions,
                 scales: {
                     y: {
                         beginAtZero: true,
@@ -231,9 +242,8 @@ function updateVolumeChart(volumeData) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            animation: {
-                duration: CONFIG.fadeInDuration
-            },
+            animation: CHART_DEFAULTS.animation,
+            transitions: CHART_DEFAULTS.transitions,
             scales: {
                 y: {
                     beginAtZero: true,
