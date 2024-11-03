@@ -3,7 +3,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 from flask_login import LoginManager, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash
 from rq import Queue
-from models import User, Message, db
+from models import User, Message, MessageTemplate, db
 from utils.twilio_handler import process_twilio_webhook
 from utils.redis_handler import get_queue_stats
 from utils.redis_helper import RedisHelper
@@ -77,6 +77,56 @@ def dashboard():
         flash("Queue system is currently unavailable", "warning")
     
     return render_template('dashboard.html', messages=messages, stats=queue_stats)
+
+@app.route('/templates')
+@login_required
+def templates():
+    templates = MessageTemplate.query.order_by(MessageTemplate.created_at.desc()).all()
+    return render_template('templates.html', templates=templates)
+
+@app.route('/templates/add', methods=['POST'])
+@login_required
+def add_template():
+    try:
+        template = MessageTemplate(
+            name=request.form['name'],
+            description=request.form['description'],
+            trigger_keywords=request.form['keywords'],
+            response_template=request.form['template']
+        )
+        db.session.add(template)
+        db.session.commit()
+        flash('Template added successfully')
+    except Exception as e:
+        flash(f'Error adding template: {str(e)}')
+    return redirect(url_for('templates'))
+
+@app.route('/templates/edit/<int:template_id>', methods=['POST'])
+@login_required
+def edit_template(template_id):
+    template = MessageTemplate.query.get_or_404(template_id)
+    try:
+        template.name = request.form['name']
+        template.description = request.form['description']
+        template.trigger_keywords = request.form['keywords']
+        template.response_template = request.form['template']
+        db.session.commit()
+        flash('Template updated successfully')
+    except Exception as e:
+        flash(f'Error updating template: {str(e)}')
+    return redirect(url_for('templates'))
+
+@app.route('/templates/toggle/<int:template_id>', methods=['POST'])
+@login_required
+def toggle_template(template_id):
+    template = MessageTemplate.query.get_or_404(template_id)
+    try:
+        template.active = not template.active
+        db.session.commit()
+        flash(f'Template {"activated" if template.active else "deactivated"} successfully')
+    except Exception as e:
+        flash(f'Error toggling template: {str(e)}')
+    return redirect(url_for('templates'))
 
 @app.route('/webhook/twilio', methods=['POST'])
 def twilio_webhook():

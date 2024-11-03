@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Message Templates</h2>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTemplateModal">
+                Add New Template
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Keywords</th>
+                            <th>Description</th>
+                            <th>Usage Count</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for template in templates %}
+                        <tr>
+                            <td>{{ template.name }}</td>
+                            <td>{{ template.trigger_keywords }}</td>
+                            <td>{{ template.description }}</td>
+                            <td>{{ template.usage_count }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if template.active else 'danger' }}">
+                                    {{ 'Active' if template.active else 'Inactive' }}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-info" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#editTemplateModal{{ template.id }}">
+                                    Edit
+                                </button>
+                                <form method="POST" action="{{ url_for('toggle_template', template_id=template.id) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-{{ 'warning' if template.active else 'success' }}">
+                                        {{ 'Deactivate' if template.active else 'Activate' }}
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+
+                        <!-- Edit Template Modal -->
+                        <div class="modal fade" id="editTemplateModal{{ template.id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Edit Template</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('edit_template', template_id=template.id) }}">
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label for="name{{ template.id }}" class="form-label">Name</label>
+                                                <input type="text" class="form-control" id="name{{ template.id }}" 
+                                                       name="name" value="{{ template.name }}" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="description{{ template.id }}" class="form-label">Description</label>
+                                                <textarea class="form-control" id="description{{ template.id }}" 
+                                                          name="description" rows="2">{{ template.description }}</textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="keywords{{ template.id }}" class="form-label">Trigger Keywords (comma-separated)</label>
+                                                <input type="text" class="form-control" id="keywords{{ template.id }}" 
+                                                       name="keywords" value="{{ template.trigger_keywords }}" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="template{{ template.id }}" class="form-label">Response Template</label>
+                                                <textarea class="form-control" id="template{{ template.id }}" 
+                                                          name="template" rows="4" required>{{ template.response_template }}</textarea>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Template Modal -->
+<div class="modal fade" id="addTemplateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Template</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_template') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="keywords" class="form-label">Trigger Keywords (comma-separated)</label>
+                        <input type="text" class="form-control" id="keywords" name="keywords" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="template" class="form-label">Response Template</label>
+                        <textarea class="form-control" id="template" name="template" rows="4" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Add Template</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

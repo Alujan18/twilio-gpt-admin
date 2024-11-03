@@ -22,3 +22,14 @@ class Message(db.Model):
     status = db.Column(db.String(20), default='pending')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     processed_at = db.Column(db.DateTime)
+    template_used = db.Column(db.Integer, db.ForeignKey('message_template.id'), nullable=True)
+
+class MessageTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    trigger_keywords = db.Column(db.Text, nullable=False)  # Comma-separated keywords
+    response_template = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    active = db.Column(db.Boolean, default=True)
+    usage_count = db.Column(db.Integer, default=0)
