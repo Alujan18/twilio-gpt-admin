@@ -24,15 +24,15 @@ const CHART_DEFAULTS = {
     },
     emptyState: {
         animation: {
-            duration: 400,
-            easing: 'easeOutQuart'
+            duration: 600,
+            easing: 'easeOutCubic'
         },
         font: {
             size: 16,
             family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial'
         },
-        color: 'rgb(150, 150, 150)',
-        padding: { top: 30 }
+        color: 'rgba(150, 150, 150, 0.7)',
+        padding: { top: 40 }
     }
 };
 
@@ -46,17 +46,21 @@ async function fetchWithRetry(url, attempts = CONFIG.retryAttempts) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             const data = await response.json();
-            return data || [];
+            // Don't log error for empty data, it's a valid state
+            return data;
         } catch (error) {
             lastError = error;
             if (i === attempts - 1) {
-                console.warn(`Failed to fetch ${url}:`, error.message);
-                return [];  // Return empty array instead of throwing
+                // Only log actual errors, not empty states
+                if (!(error instanceof SyntaxError)) {
+                    console.warn(`Failed to fetch ${url}:`, error.message);
+                }
+                return [];
             }
             await new Promise(resolve => setTimeout(resolve, CONFIG.retryDelay));
         }
     }
-    return [];  // Fallback empty array
+    return [];
 }
 
 function createEmptyStateChart(ctx, message) {
@@ -137,7 +141,7 @@ async function updateQueueHistory() {
             queueHistoryChart = cleanupChart(queueHistoryChart);
             queueHistoryChart = createEmptyStateChart(
                 chartContainer.getContext('2d'),
-                'No message history available yet'
+                'Queue is currently empty'
             );
             return;
         }
@@ -201,7 +205,7 @@ async function updateQueueHistory() {
         queueHistoryChart = cleanupChart(queueHistoryChart);
         queueHistoryChart = createEmptyStateChart(
             chartContainer.getContext('2d'),
-            'Queue history temporarily unavailable'
+            'Queue monitoring temporarily unavailable'
         );
     }
 }
@@ -214,7 +218,7 @@ function updateVolumeChart(volumeData) {
         volumeChart = cleanupChart(volumeChart);
         volumeChart = createEmptyStateChart(
             chartContainer.getContext('2d'),
-            'No message volume data available yet'
+            'No messages processed yet'
         );
         return;
     }
